@@ -252,6 +252,52 @@ impl<T: BHValue, const D: usize> Bvh<T, D> {
         best_candidate.map(|best| (best.0, best.1.sqrt()))
     }
 
+    /// Traverses the [`Bvh`].
+    ///
+    /// Returns a collection of the nearest shapes and their distances.
+    /// The collection is not sorted to prevent `T: Ord` constraint.
+    ///
+    /// [`Bvh`]: struct.Bvh.html
+    /// [`Aabb`]: ../aabb/struct.Aabb.html
+    ///
+    pub fn all_nearest_to<'a, Shape: Bounded<T, D> + PointDistance<T, D>>(
+        &self,
+        origin: nalgebra::Point<T, D>,
+        shapes: &'a [Shape],
+    ) -> Vec<(&'a Shape, T)>
+    where
+        Self: marker::Sized,
+    {
+        let mut candidates = Vec::new();
+
+        if self.nodes.is_empty() {
+            return candidates;
+        }
+
+        let mut best_distance = T::max_value();
+        let mut closure = |(shape, dist): (&'a Shape, T), best_distance: &mut T| {
+            if dist.lt(best_distance) {
+                *best_distance = dist;
+                candidates.push((shape, dist));
+            }
+        };
+
+        BvhNode::nearest_to_recursive(
+            &self.nodes,
+            0,
+            origin,
+            shapes,
+            &mut best_distance,
+            &mut closure,
+        );
+
+        // Return the best shape and its distance. We had a distance squared previously.
+        for (_, d) in candidates.as_mut_slice() {
+            *d = d.sqrt();
+        }
+        candidates
+    }
+
     /// Prints the [`Bvh`] in a tree-like visualization.
     ///
     /// [`Bvh`]: struct.Bvh.html
@@ -564,8 +610,8 @@ mod tests {
     use crate::{
         bounding_hierarchy::BoundingHierarchy,
         testbase::{
-            TBvh3, TBvhNode3, TPoint3, TRay3, TVector3, UnitBox, build_empty_bh, build_some_bh,
-            nearest_to_some_bh, traverse_some_bh,
+            TBvh3, TBvhNode3, TPoint3, TRay3, TVector3, Triangle, UnitBox, build_empty_bh,
+            build_some_bh, nearest_to_some_bh, traverse_some_bh,
         },
     };
 
@@ -598,6 +644,43 @@ mod tests {
     /// Runs some primitive tests for distance query of a point with a fixed scene given as a [`Bvh`].
     fn test_nearest_to_bvh() {
         nearest_to_some_bh::<TBvh3>();
+    }
+
+    #[test]
+    fn test_all_nearest_to_bvh() {
+        let mut tris = [
+            //
+            ([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+            ([0.0, 0.0, 2.0], [1.0, 0.0, 2.0], [0.0, 1.0, 2.0]),
+            ([0.0, 0.0, 4.0], [1.0, 0.0, 4.0], [0.0, 1.0, 4.0]),
+        ]
+        .into_iter()
+        .map(|(a, b, c)| (TPoint3::from(a), TPoint3::from(b), TPoint3::from(c)))
+        .map(|(a, b, c)| Triangle::new(a, b, c))
+        .collect::<alloc::vec::Vec<_>>();
+
+        let bh = TBvh3::build(&mut tris);
+
+        let mut shapes = bh.all_nearest_to(
+            // Query near the last triangle
+            TPoint3::new(0.5, 0.5, 4.0),
+            &mut tris,
+        );
+
+        // Sort by distance.
+        shapes.sort_by(|(_, d_lf), (_, d_rt)| d_lf.total_cmp(d_rt));
+
+        assert_eq!(shapes.len(), 3);
+
+        let nearest = shapes.first().map(|(s, _)| s).unwrap();
+        assert_eq!(nearest.a, TPoint3::new(0.0, 0.0, 4.0));
+        assert_eq!(nearest.b, TPoint3::new(1.0, 0.0, 4.0));
+        assert_eq!(nearest.c, TPoint3::new(0.0, 1.0, 4.0));
+
+        let furthest = shapes.last().map(|(s, _)| s).unwrap();
+        assert_eq!(furthest.a, TPoint3::new(0.0, 0.0, 0.0));
+        assert_eq!(furthest.b, TPoint3::new(1.0, 0.0, 0.0));
+        assert_eq!(furthest.c, TPoint3::new(0.0, 1.0, 0.0));
     }
 
     #[test]
