@@ -356,6 +356,7 @@ impl<T: BHValue, const D: usize> BvhNode<T, D> {
 
                 // Traverse children
                 for (index, _) in children {
+                    // NOTE: We used to avoid some work here based on child distance
                     Self::nearest_to_recursive(nodes, index, query, shapes, closure);
                 }
             }
