@@ -275,11 +275,8 @@ impl<T: BHValue, const D: usize> Bvh<T, D> {
         }
 
         let mut best_distance = T::max_value();
-        let mut closure = |(shape, dist): (&'a Shape, T), best_distance: &mut T| {
-            if dist.lt(best_distance) {
-                *best_distance = dist;
-                candidates.push((shape, dist));
-            }
+        let mut closure = |(shape, dist): (&'a Shape, T), _: &mut T| {
+            candidates.push((shape, dist));
         };
 
         BvhNode::nearest_to_recursive(
