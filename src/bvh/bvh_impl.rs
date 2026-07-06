@@ -232,14 +232,21 @@ impl<T: BHValue, const D: usize> Bvh<T, D> {
 
         let mut best_candidate = None;
         let mut best_distance = T::max_value();
-        let mut closure = |(shape, dist): (&'a Shape, T)| {
-            if dist < best_distance {
-                best_distance = dist;
+        let mut closure = |(shape, dist): (&'a Shape, T), best_distance: &mut T| {
+            if dist.lt(best_distance) {
+                *best_distance = dist;
                 best_candidate.replace((shape, dist));
             }
         };
 
-        BvhNode::nearest_to_recursive(&self.nodes, 0, origin, shapes, &mut closure);
+        BvhNode::nearest_to_recursive(
+            &self.nodes,
+            0,
+            origin,
+            shapes,
+            &mut best_distance,
+            &mut closure,
+        );
 
         // Return the best shape and its distance. We had a distance squared previously.
         best_candidate.map(|best| (best.0, best.1.sqrt()))

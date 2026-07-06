@@ -327,13 +327,14 @@ impl<T: BHValue, const D: usize> BvhNode<T, D> {
     pub(crate) fn nearest_to_recursive<
         'a,
         Shape: Bounded<T, D> + PointDistance<T, D>,
-        Closure: FnMut((&'a Shape, T)) -> (),
+        Update: FnMut((&'a Shape, T), &mut T) -> (),
     >(
         nodes: &[BvhNode<T, D>],
         node_index: usize,
         query: nalgebra::Point<T, D>,
         shapes: &'a [Shape],
-        closure: &mut Closure,
+        best_distance: &mut T,
+        update: &mut Update,
     ) {
         match nodes[node_index] {
             BvhNode::Node {
@@ -355,15 +356,23 @@ impl<T: BHValue, const D: usize> BvhNode<T, D> {
                 }
 
                 // Traverse children
-                for (index, _) in children {
-                    // NOTE: We used to avoid some work here based on child distance
-                    Self::nearest_to_recursive(nodes, index, query, shapes, closure);
+                for (index, child_dist) in children {
+                    if child_dist.lt(best_distance) {
+                        Self::nearest_to_recursive(
+                            nodes,
+                            index,
+                            query,
+                            shapes,
+                            best_distance,
+                            update,
+                        );
+                    }
                 }
             }
             BvhNode::Leaf { shape_index, .. } => {
                 // This leaf might contain a better shape: check it directly with its exact distance (squared).
                 let dist = shapes[shape_index].distance_squared(query);
-                closure((&shapes[shape_index], dist));
+                update((&shapes[shape_index], dist), best_distance);
             }
         }
     }
